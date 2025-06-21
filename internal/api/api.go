@@ -4,24 +4,27 @@ import (
 	"log/slog"
 
 	"prodLoaderREST/internal/broker"
+	"prodLoaderREST/internal/services/consumer/vk"
 
 	"prodLoaderREST/internal/api/handlers/product/add"
+	deleteHandler "prodLoaderREST/internal/api/handlers/product/delete"
 	"prodLoaderREST/internal/api/middlewares/requestid"
-	"prodLoaderREST/internal/api/types"
 
 	"github.com/gin-gonic/gin"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type API struct {
-	Router *gin.Engine
-	Log    *slog.Logger
+	Router    *gin.Engine
+	Log       *slog.Logger
+	VKService *vk.VkConsumer
 }
 
-func New(log *slog.Logger, servs ...types.Consumer) *API {
+func New(log *slog.Logger, vkService *vk.VkConsumer) *API {
 	return &API{
-		Router: gin.New(),
-		Log:    log,
+		Router:    gin.New(),
+		Log:       log,
+		VKService: vkService,
 	}
 }
 
@@ -31,7 +34,8 @@ func (api *API) Setup() {
 	v1.Use(requestid.RequestIdMidlleware())
 	//v1.Use(gin.LoggerWithFormatter(log.Logging))
 
-	v1.POST("/products", add.New(api.Log, broker.VKProductChannel))
+	v1.POST("/products", add.New(api.Log, broker.VKaddProductChannel))
+	v1.DELETE("/products/", deleteHandler.New(api.Log, api.VKService))
 
 	v1.GET("/swagger/*any", gin.WrapH(httpSwagger.Handler()))
 

@@ -7,6 +7,7 @@ import (
 
 var (
 	ErrDecodeReqBody = errors.New("failed to decode request body")
+	ErrConvertParam  = errors.New("can't convert int query parameter")
 )
 
 type Consumer interface {

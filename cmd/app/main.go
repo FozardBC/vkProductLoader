@@ -41,10 +41,10 @@ func main() {
 
 	log.Info("Autharizated vk:", "Name:", vkClient.GetClientName())
 
-	API := api.New(log)
+	API := api.New(log, vkClient)
 	API.Setup()
 
-	go vkClient.Load(broker.VKProductChannel)
+	go vkClient.Load(broker.VKaddProductChannel)
 
 	srv := http.Server{
 		Addr:    cfg.ServerHost + ":" + cfg.ServerPort,
