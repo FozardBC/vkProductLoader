@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"prodLoaderREST/internal/api/types"
 	"prodLoaderREST/internal/domain/filters"
+	"prodLoaderREST/internal/lib/api/response"
 	"prodLoaderREST/internal/services/consumer/vk"
 	"strconv"
 
@@ -23,7 +24,7 @@ func New(log *slog.Logger, deleter ProductDeleter) gin.HandlerFunc {
 		options, err := setFilterQueries(logHandler, c)
 		if err != nil {
 			logHandler.Error("Failed to set filter queries", "error", err.Error())
-			c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to set filter queries: %s", err.Error())})
+			c.JSON(400, response.Error(fmt.Sprintf("Failed to set filter queries: %s", err.Error())))
 			return
 		}
 
@@ -31,16 +32,18 @@ func New(log *slog.Logger, deleter ProductDeleter) gin.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, vk.ErrNotAllProductsDeleted) {
 				logHandler.Error("Not all products were deleted", "error", err.Error(), "count", count)
-				c.JSON(500, gin.H{"error": fmt.Sprintf("Not all products were deleted: %s", err.Error())})
+				c.JSON(500, response.Error(fmt.Sprintf("Not all products were deleted: %s", err.Error())))
 				return
 			}
 			logHandler.Error("Failed to delete products", "error", err.Error())
-			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to delete products: %s", err.Error())})
+			c.JSON(500, response.Error(fmt.Sprintf("Failed to delete products: %s", err.Error())))
 			return
 		}
 
 		logHandler.Info("Product deleted successfully", "count", count)
-		c.JSON(200, gin.H{"message": "Product deleted successfully"})
+		c.JSON(200, response.OKWithPayload(map[string]int{
+			"deleted_count": count,
+		}))
 	}
 }
 

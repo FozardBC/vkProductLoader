@@ -149,17 +149,10 @@ func (s *Storage) Delete(productID int) error {
 		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
 	}
 
-	res, err := stmt.Exec(productID)
+	_, err = stmt.Exec(productID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrExecStmt, err)
 	}
-
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf(storage.ErrProductIDnotFound.Error())
-	}
-
-	_ = rowsAffected
 
 	return nil
 }
