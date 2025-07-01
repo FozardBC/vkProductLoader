@@ -18,13 +18,15 @@ type API struct {
 	Router    *gin.Engine
 	Log       *slog.Logger
 	VKService *vk.VkConsumer
+	Exchanger *broker.Exchanger
 }
 
-func New(log *slog.Logger, vkService *vk.VkConsumer) *API {
+func New(log *slog.Logger, vkService *vk.VkConsumer, Exchanger *broker.Exchanger) *API {
 	return &API{
 		Router:    gin.New(),
 		Log:       log,
 		VKService: vkService,
+		Exchanger: Exchanger,
 	}
 }
 
@@ -34,7 +36,7 @@ func (api *API) Setup() {
 	v1.Use(requestid.RequestIdMidlleware())
 	//v1.Use(gin.LoggerWithFormatter(log.Logging))
 
-	v1.POST("/products", add.New(api.Log, broker.VKaddProductChannel))
+	v1.POST("/products", add.New(api.Log, api.Exchanger))
 	v1.DELETE("/products/", deleteHandler.New(api.Log, api.VKService))
 
 	v1.GET("/swagger/*any", gin.WrapH(httpSwagger.Handler()))

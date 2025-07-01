@@ -8,9 +8,6 @@ import (
 	"net/http"
 	"prodLoaderREST/internal/domain/filters"
 	"prodLoaderREST/internal/domain/models"
-	"sync"
-
-	"prodLoaderREST/internal/storage"
 
 	"github.com/SevereCloud/vksdk/api/params"
 	"github.com/SevereCloud/vksdk/v3/api"
@@ -20,19 +17,23 @@ var (
 	ErrNotAllProductsDeleted = errors.New("not all products were deleted")
 )
 
-type VkConsumer struct {
-	log     *slog.Logger
-	VK      *api.VK
-	Storage storage.Storage
-	groupID int
+type StatusChanger interface {
+	VkLoaded(productID int64, vkProductID int) error
 }
 
-func New(log *slog.Logger, vk *api.VK, storage storage.Storage, groupID int) *VkConsumer {
+type VkConsumer struct {
+	log           *slog.Logger
+	VK            *api.VK
+	StatusChanger StatusChanger
+	groupID       int
+}
+
+func New(log *slog.Logger, vk *api.VK, statusChanger StatusChanger, groupID int) *VkConsumer {
 	return &VkConsumer{
-		log:     log,
-		VK:      vk,
-		Storage: storage,
-		groupID: groupID,
+		log:           log,
+		VK:            vk,
+		StatusChanger: statusChanger,
+		groupID:       groupID,
 	}
 }
 
@@ -62,7 +63,7 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 
 			log := v.log.With("Title", p.Title)
 
-			MainPicResponse, err := v.loadMainPicture(p.MainPicture)
+			MainPicResponse, err := v.loadMainPicture(p.MainPictureURL)
 			if err != nil {
 				log.Error("Failed to load main picture", "err", err.Error())
 				return
@@ -70,7 +71,7 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 
 			log.Debug("Main picture loaded")
 
-			PicturesIDs, err := v.loadPictures(log, p.Pictures)
+			PicturesIDs, err := v.loadPictures(log, p.PicturesURL)
 			if err != nil {
 				log.Error("Failed to load pictures", "err", err.Error())
 				return
@@ -88,17 +89,13 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 
 			response, err := v.VK.MarketAdd(api.Params(pars.Params))
 			if err != nil {
-				log.Error("Failed to add product to market", "err", err.Error())
+				log.Error("Failed to add product to market", "err", err.Error(), "respone", response)
 				return
 			}
 
-			err = v.Storage.SaveID(response.MarketItemID, p.VK.CategoryID)
+			err = v.StatusChanger.VkLoaded(p.Id, response.MarketItemID)
 			if err != nil {
-				if errors.Is(err, storage.ErrProductIDExists) {
-					log.Warn("Product ID already exists in storage, skipping", "err", err.Error())
-					return
-				}
-				log.Warn("Failed to save product ID in storage", "err", err.Error())
+				log.Error("failed to change status", "error", err)
 			}
 
 			log.Debug("Product added to market. ID Saved in storage")
@@ -108,80 +105,74 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 
 func (v *VkConsumer) Delete(options *filters.Options) (int, error) {
 
-	pars := params.NewMarketDeleteBuilder()
+	// pars := params.NewMarketDeleteBuilder()
 
-	pars.OwnerID(-v.groupID)
+	// pars.OwnerID(-v.groupID)
 
-	ProductIDs, err := v.Storage.GetProdIDs(options)
-	if err != nil {
-		if errors.Is(err, storage.ErrProductIDnotFound) {
-			v.log.Warn("no product founds for given filters", "options", options)
+	// ProductIDs, err := v.Storage.GetProdIDs(options)
+	// if err != nil {
+	// 	if errors.Is(err, storage.ErrProductIDnotFound) {
+	// 		v.log.Warn("no product founds for given filters", "options", options)
 
-			return 0, err
-		}
-		v.log.Error("Failed to get product IDs from storage", "err", err.Error())
-		return 0, fmt.Errorf("failed to get product IDs from storage: %w", err)
-	}
+	// 		return 0, err
+	// 	}
+	// 	v.log.Error("Failed to get product IDs from storage", "err", err.Error())
+	// 	return 0, fmt.Errorf("failed to get product IDs from storage: %w", err)
+	// }
 
-	wg := sync.WaitGroup{}
+	// wg := sync.WaitGroup{}
 
-	for i, productID := range ProductIDs {
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
+	// for i, productID := range ProductIDs {
+	// 	wg.Add(1)
+	// 	go func(wg *sync.WaitGroup) {
 
-			if productID == 0 {
-				v.log.Debug("No products found for deletion", "count", len(ProductIDs))
-				wg.Done()
-				return
-			}
+	// 		if productID == 0 {
+	// 			v.log.Debug("No products found for deletion", "count", len(ProductIDs))
+	// 			wg.Done()
+	// 			return
+	// 		}
 
-			v.log.Debug("Deleting product", "productID", productID)
+	// 		v.log.Debug("Deleting product", "productID", productID)
 
-			pars.ItemID(productID)
+	// 		pars.ItemID(productID)
 
-			_, err := v.VK.MarketDelete(api.Params(pars.Params))
-			if err != nil {
-				v.log.Error("Failed to delete product from market", "productID", productID, "err", err.Error())
+	// 		_, err := v.VK.MarketDelete(api.Params(pars.Params))
+	// 		if err != nil {
+	// 			v.log.Error("Failed to delete product from market", "productID", productID, "err", err.Error())
 
-				return
-			}
+	// 			return
+	// 		}
 
-			err = v.Storage.Delete(productID)
-			if err != nil {
-				v.log.Error("Failed to delete product from storage", "productID", productID, "err", err.Error())
-				return
-			}
+	// 		ProductIDs[i] = 0 // Удаляем ID из слайса, чтобы не удалять его повторно
 
-			ProductIDs[i] = 0 // Удаляем ID из слайса, чтобы не удалять его повторно
+	// 		wg.Done()
 
-			wg.Done()
+	// 		v.log.Debug("Product deleted successfully", "productID", productID)
+	// 	}(&wg)
+	// }
 
-			v.log.Debug("Product deleted successfully", "productID", productID)
-		}(&wg)
-	}
+	// wg.Wait()
 
-	wg.Wait()
+	// var NotDeletedCount int
 
-	var NotDeletedCount int
+	// errNotDeleted := "Not deleted products: "
 
-	errNotDeleted := "Not deleted products: "
+	// for _, productID := range ProductIDs {
+	// 	if productID != 0 {
+	// 		NotDeletedCount++
 
-	for _, productID := range ProductIDs {
-		if productID != 0 {
-			NotDeletedCount++
+	// 		errNotDeleted += fmt.Sprintf("%d; ", productID)
+	// 	}
+	// }
 
-			errNotDeleted += fmt.Sprintf("%d; ", productID)
-		}
-	}
+	// if NotDeletedCount > 0 {
+	// 	v.log.Error("Some products were not deleted", "count", NotDeletedCount, "details", errNotDeleted)
+	// 	return len(ProductIDs) - NotDeletedCount, fmt.Errorf("%w: %s", ErrNotAllProductsDeleted, errNotDeleted)
+	// }
 
-	if NotDeletedCount > 0 {
-		v.log.Error("Some products were not deleted", "count", NotDeletedCount, "details", errNotDeleted)
-		return len(ProductIDs) - NotDeletedCount, fmt.Errorf("%w: %s", ErrNotAllProductsDeleted, errNotDeleted)
-	}
+	// v.log.Info("All products deleted successfully", "count", len(ProductIDs))
 
-	v.log.Info("All products deleted successfully", "count", len(ProductIDs))
-
-	return len(ProductIDs), nil
+	return 0, nil
 
 }
 

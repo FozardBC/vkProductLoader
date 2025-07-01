@@ -1,6 +1,7 @@
 package add
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -31,6 +32,7 @@ type Request struct {
 	Size           string    `json:"size" validate:"required"`
 	Status         string    `json:"status" validate:"required"`
 	Price          int       `json:"price" validate:"required"`
+	TelegramFileID string    `json:"tg_fileID" validate:"required"`
 	MainPictureURL string    `json:"mainPictureURL" validate:"required"`
 	PicturesURL    []string  `json:"picturesURL" validate:"required"`
 	VK             VK        `json:"vk"`
@@ -38,20 +40,26 @@ type Request struct {
 	DanisaBot      DanisaBot `json:"danisa_bot"`
 }
 
-func New(log *slog.Logger, queue chan *models.Product) gin.HandlerFunc {
+type Exchanger interface {
+	WriteAdd(ctx context.Context, product *models.Product) error
+}
+
+func New(log *slog.Logger, exchanger Exchanger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logHandler := log.With("requestID", requestid.Get(c))
 
-		var Request Request
+		ctx := c.Request.Context()
 
-		if err := c.BindJSON(&Request); err != nil {
+		var Product *models.Product
+
+		if err := c.BindJSON(&Product); err != nil {
 			logHandler.Error(types.ErrDecodeReqBody.Error(), "err", err.Error())
 
 			c.JSON(http.StatusBadRequest, response.Error(types.ErrDecodeReqBody.Error()))
 			return
 		}
 
-		if err := validator.New().Struct(Request); err != nil {
+		if err := validator.New().Struct(Product); err != nil {
 			validatorErr := err.(validator.ValidationErrors)
 
 			logHandler.Error("invalid request", "err", err.Error())
@@ -61,24 +69,17 @@ func New(log *slog.Logger, queue chan *models.Product) gin.HandlerFunc {
 			return
 		}
 
-		logHandler.Debug("received product", "product", Request)
+		logHandler.Debug("received product", "product", Product)
 
-		product := &models.Product{
-			Title:       Request.Title,
-			Description: Request.Description,
-			Size:        Request.Size,
-			Status:      Request.Status,
-			Price:       Request.Price,
-			MainPicture: Request.MainPictureURL,
-			Pictures:    Request.PicturesURL,
-			VK:          models.VK{CategoryID: Request.VK.CategoryID, ToLoad: Request.VK.ToLoad},
-			Avito:       models.Avito{ToLoad: Request.Avito.ToLoad},
-			DanisaBot:   models.DanisaBot{ToLoad: Request.DanisaBot.ToLoad},
+		if err := exchanger.WriteAdd(ctx, Product); err != nil {
+			logHandler.Error("failed to write to broker", "err", err.Error())
+
+			c.JSON(http.StatusInternalServerError, response.Error("Internal Error"))
+
+			return
 		}
 
-		queue <- product
-
-		logHandler.Info("product added to queue", "product", Request)
+		logHandler.Info("product added to queue", "product", Product.Title)
 
 		c.JSON(http.StatusOK, response.OK)
 
