@@ -84,7 +84,7 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 			pars.PhotoIDs(PicturesIDs)
 			pars.Description(p.Description)
 			pars.Price(float64(p.Price))
-			pars.CategoryID(p.VKCategoryID)
+			pars.CategoryID(p.VK.CategoryID)
 
 			response, err := v.VK.MarketAdd(api.Params(pars.Params))
 			if err != nil {
@@ -92,7 +92,7 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 				return
 			}
 
-			err = v.Storage.SaveID(response.MarketItemID, p.VKCategoryID)
+			err = v.Storage.SaveID(response.MarketItemID, p.VK.CategoryID)
 			if err != nil {
 				if errors.Is(err, storage.ErrProductIDExists) {
 					log.Warn("Product ID already exists in storage, skipping", "err", err.Error())

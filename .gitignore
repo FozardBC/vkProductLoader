@@ -2,3 +2,4 @@
 .env
 ./cmd/app/logs
 ./storage
+./cmd/app

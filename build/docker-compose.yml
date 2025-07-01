@@ -1,0 +1,13 @@
+services:
+  server:
+    build:
+      context: ./
+    container_name: test-task-server
+    environment:
+      DB_PATH: ./storage/db.sqlite3
+      SRV_HOST: 0.0.0.0
+      SRV_PORT: 8080
+      VK_TOKEN: vk1.a.n4-q9YHhb1BiGTb9IRXvtlun2kUuDevumaTTlNk0sLSSi0FvWwIj-dtPRUKEUMhYIANxbRYsAm1Cq-ndVOCxCZyyUrV9lFC6qMvFfhqspFLA50xD_1eA24-xVGygqLlbKnKt1pGd3OCxUBXhDJpNMhYyy8pzCPjE3CbMnSawHw0p-TRlQO48x3fMaeOJe-J3fAs-wYTE3rRak0LvrjpBbg
+      VK_GROUP_ID: 219807323
+    ports:
+      - "8080:8080"

@@ -18,7 +18,7 @@ type Config struct {
 
 func MustRead() *Config {
 
-	if err := godotenv.Load(); err != nil { // DEBUG:
+	if err := godotenv.Load("../../.env"); err != nil { // DEBUG:
 		log.Print("INFO: file .env is not exists. Loading env variables ")
 	}
 

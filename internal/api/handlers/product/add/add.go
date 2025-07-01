@@ -13,15 +13,29 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+type Avito struct {
+	ToLoad bool `json:"toLoad"`
+}
+
+type DanisaBot struct {
+	ToLoad bool `json:"toLoad"`
+}
+type VK struct {
+	ToLoad     bool `json:"toLoad"`
+	CategoryID int  `json:"categoryID"`
+}
+
 type Request struct {
-	Title          string   `json:"title" validate:"required"`
-	Description    string   `json:"description" validate:"required"`
-	Size           string   `json:"size" validate:"required"`
-	Status         string   `json:"status" validate:"required"`
-	Price          int      `json:"price" validate:"required"`
-	MainPictureURL string   `json:"mainPictureURL" validate:"required"`
-	PicturesURL    []string `json:"picturesURL" validate:"required"`
-	CategoryID     int      `json:"categoryID" validate:"required"`
+	Title          string    `json:"title" validate:"required"`
+	Description    string    `json:"description" validate:"required"`
+	Size           string    `json:"size" validate:"required"`
+	Status         string    `json:"status" validate:"required"`
+	Price          int       `json:"price" validate:"required"`
+	MainPictureURL string    `json:"mainPictureURL" validate:"required"`
+	PicturesURL    []string  `json:"picturesURL" validate:"required"`
+	VK             VK        `json:"vk"`
+	Avito          Avito     `json:"avito"`
+	DanisaBot      DanisaBot `json:"danisa_bot"`
 }
 
 func New(log *slog.Logger, queue chan *models.Product) gin.HandlerFunc {
@@ -50,14 +64,16 @@ func New(log *slog.Logger, queue chan *models.Product) gin.HandlerFunc {
 		logHandler.Debug("received product", "product", Request)
 
 		product := &models.Product{
-			Title:        Request.Title,
-			Description:  Request.Description,
-			Size:         Request.Size,
-			Status:       Request.Status,
-			Price:        Request.Price,
-			MainPicture:  Request.MainPictureURL,
-			Pictures:     Request.PicturesURL,
-			VKCategoryID: Request.CategoryID,
+			Title:       Request.Title,
+			Description: Request.Description,
+			Size:        Request.Size,
+			Status:      Request.Status,
+			Price:       Request.Price,
+			MainPicture: Request.MainPictureURL,
+			Pictures:    Request.PicturesURL,
+			VK:          models.VK{CategoryID: Request.VK.CategoryID, ToLoad: Request.VK.ToLoad},
+			Avito:       models.Avito{ToLoad: Request.Avito.ToLoad},
+			DanisaBot:   models.DanisaBot{ToLoad: Request.DanisaBot.ToLoad},
 		}
 
 		queue <- product
