@@ -7,13 +7,12 @@ type Product struct {
 	Size           string   `json:"size" validate:"required"`
 	Status         string   `json:"status" validate:"required"`
 	Price          int      `json:"price" validate:"required"`
-	TelegramFileID string   `json:"tg_fileID" validate:"required"`
-	TelegramUrlPic string   `json:"tg_pic_url" validate:"required"`
+	TelegramFileID string   `json:"telegram_fileID" validate:"required"`
 	MainPictureURL string   `json:"mainPictureURL" validate:"required"`
 	PicturesURL    []string `json:"picturesURL" validate:"required"`
 	VK             VK       `json:"vk"`
 	Avito          Avito    `json:"avito"`
-	Ucoz           Ucoz     `json:"danisa_bot"`
+	Ucoz           Ucoz     `json:"ucoz"`
 }
 
 type Avito struct {

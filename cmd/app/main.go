@@ -43,7 +43,7 @@ func main() {
 
 	log.Info("Autharizated vk:", "Name:", vkClient.GetClientName())
 
-	API := api.New(log, vkClient, Exchanger)
+	API := api.New(log, vkClient, Exchanger, storage)
 	API.Setup()
 
 	go vkClient.Load(broker.VKaddProductChannel)

@@ -10,7 +10,7 @@ import (
 type Storage interface {
 	Save(ctx context.Context, product *models.Product) (int64, error)
 	GetProdIDs(options *filters.Options) ([]int, error)
-	Delete(ctx context.Context, productID int) error
+	Search(ctx context.Context, searchQuery string, offset int, limit int) (products []*models.Product, count int, err error)
 	Close() error
 	Ping() error
 }

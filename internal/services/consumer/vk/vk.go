@@ -105,50 +105,50 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 
 func (v *VkConsumer) Delete(options *filters.Options) (int, error) {
 
-	// pars := params.NewMarketDeleteBuilder()
-
+	//	pars := params.NewMarketDeleteBuilder()
+	//
 	// pars.OwnerID(-v.groupID)
-
-	// ProductIDs, err := v.Storage.GetProdIDs(options)
+	//
+	// ProductIDs, err := v.storage.GetProdIDs(options)
 	// if err != nil {
-	// 	if errors.Is(err, storage.ErrProductIDnotFound) {
-	// 		v.log.Warn("no product founds for given filters", "options", options)
-
-	// 		return 0, err
-	// 	}
-	// 	v.log.Error("Failed to get product IDs from storage", "err", err.Error())
-	// 	return 0, fmt.Errorf("failed to get product IDs from storage: %w", err)
+	// if errors.Is(err, storage.ErrProductIDnotFound) {
+	// v.log.Warn("no product founds for given filters", "options", options)
+	//
+	// return 0, err
 	// }
-
+	// v.log.Error("Failed to get product IDs from storage", "err", err.Error())
+	// return 0, fmt.Errorf("failed to get product IDs from storage: %w", err)
+	// }
+	//
 	// wg := sync.WaitGroup{}
-
+	//
 	// for i, productID := range ProductIDs {
-	// 	wg.Add(1)
-	// 	go func(wg *sync.WaitGroup) {
-
-	// 		if productID == 0 {
-	// 			v.log.Debug("No products found for deletion", "count", len(ProductIDs))
-	// 			wg.Done()
-	// 			return
-	// 		}
-
-	// 		v.log.Debug("Deleting product", "productID", productID)
-
-	// 		pars.ItemID(productID)
-
-	// 		_, err := v.VK.MarketDelete(api.Params(pars.Params))
-	// 		if err != nil {
-	// 			v.log.Error("Failed to delete product from market", "productID", productID, "err", err.Error())
-
-	// 			return
-	// 		}
-
-	// 		ProductIDs[i] = 0 // Удаляем ID из слайса, чтобы не удалять его повторно
-
-	// 		wg.Done()
-
-	// 		v.log.Debug("Product deleted successfully", "productID", productID)
-	// 	}(&wg)
+	// wg.Add(1)
+	// go func(wg *sync.WaitGroup) {
+	//
+	// if productID == 0 {
+	// v.log.Debug("No products found for deletion", "count", len(ProductIDs))
+	// wg.Done()
+	// return
+	// }
+	//
+	// v.log.Debug("Deleting product", "productID", productID)
+	//
+	// pars.ItemID(productID)
+	//
+	// _, err := v.VK.MarketDelete(api.Params(pars.Params))
+	// if err != nil {
+	// v.log.Error("Failed to delete product from market", "productID", productID, "err", err.Error())
+	//
+	// return
+	// }
+	//
+	// ProductIDs[i] = 0 // Удаляем ID из слайса, чтобы не удалять его повторно
+	//
+	// wg.Done()
+	//
+	// v.log.Debug("Product deleted successfully", "productID", productID)
+	// }(&wg)
 	// }
 
 	// wg.Wait()

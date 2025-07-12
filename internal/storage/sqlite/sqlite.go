@@ -3,11 +3,14 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"prodLoaderREST/internal/domain/filters"
 	"prodLoaderREST/internal/domain/models"
 	"prodLoaderREST/internal/storage"
+	"strings"
 
 	"github.com/mattn/go-sqlite3"
 )
@@ -23,6 +26,8 @@ type Storage struct {
 }
 
 var (
+	productsFtsTable = "products_fts"
+
 	productsTable             = "products"
 	productsIdColumn          = "id"
 	productsTitleColumm       = "title"
@@ -67,8 +72,10 @@ func New(log *slog.Logger, storagePath string) (*Storage, error) {
         vk_loaded BOOLEAN NOT NULL DEFAULT FALSE,
         avito_loaded BOOLEAN NOT NULL DEFAULT FALSE, 
         created_at TEXT DEFAULT (datetime('now'))
+		
     );`)
 	if err != nil {
+
 		return nil, fmt.Errorf("failed to create products table: %w", err)
 	}
 
@@ -87,10 +94,54 @@ func New(log *slog.Logger, storagePath string) (*Storage, error) {
 	_, err = db.Exec(`
     CREATE TABLE IF NOT EXISTS product_images (
         product_id INTEGER PRIMARY KEY,
-        telegram_file_id TEXT UNIQUE NOT NULL,
+        telegram_file_id TEXT NOT NULL,
         telegram_url TEXT NOT NULL,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create product_images table: %w", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE VIRTUAL TABLE IF NOT EXISTS products_fts 
+	USING fts4(
+	title,
+	ucoz_loaded,
+    vk_loaded,
+    avito_loaded, 
+    content='products',
+    tokenize='simple');`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create product_images table: %w", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE TRIGGER IF NOT EXISTS products_ai AFTER INSERT ON products BEGIN
+    INSERT INTO products_fts(rowid, title, ucoz_loaded, vk_loaded, avito_loaded)
+    VALUES (new.id, new.title, new.ucoz_loaded, new.vk_loaded, new.avito_loaded);
+	END;`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create product_images table: %w", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE TRIGGER IF NOT EXISTS products_au AFTER UPDATE OF name ON products BEGIN
+    UPDATE products_fts SET
+        title = new.title,
+		ucoz_loaded = new.ucoz_loaded,
+		vk_loaded = new.vk_loaded, 
+		avito_loaded = new.avito_loaded
+       
+    WHERE rowid = old.id;
+END;`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create product_images table: %w", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE TRIGGER IF NOT EXISTS products_ad AFTER DELETE ON products BEGIN
+    DELETE FROM products_fts WHERE rowid = old.id;
+END;`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create product_images table: %w", err)
 	}
@@ -107,8 +158,10 @@ func (s *Storage) Save(ctx context.Context, product *models.Product) (int64, err
 
 	defer tx.Rollback()
 
+	product.Title = strings.ToLower(product.Title)
+
 	query := fmt.Sprintf(
-		`INSERT INTO %s(%s, %s, %s) VALUES (?, ?, ?) RETURNING id`,
+		`INSERT INTO %s(%s, %s, %s) VALUES (LOWER(?), ?, ?) RETURNING id`,
 		productsTable,
 		productsTitleColumm,
 		productsPriceColumn,
@@ -160,8 +213,9 @@ func (s *Storage) Save(ctx context.Context, product *models.Product) (int64, err
 		return 0, fmt.Errorf("%w: %w", ErrPrepareStmt, err)
 	}
 
-	_, err = stmt3.Exec(id, product.TelegramFileID, product.TelegramUrlPic)
+	_, err = stmt3.Exec(id, product.TelegramFileID, product.MainPictureURL)
 	if err != nil {
+
 		return 0, fmt.Errorf("%w: %w", ErrExecStmt, err)
 	}
 
@@ -214,12 +268,196 @@ func (s *Storage) VkLoaded(productID int64, vkProductID int) error {
 	return nil
 }
 
+func (s *Storage) UcozLoaded(productID int64, ucozProductID int) error {
+	tx, err := s.db.BeginTx(context.TODO(), nil)
+	if err != nil {
+		return fmt.Errorf("%w:%w", storage.ErrBeginTx, err)
+	}
+
+	query1 := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", productsTable, productsUcozLoadedColumn, productsIdColumn)
+	stmt, err := tx.Prepare(query1)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
+	}
+
+	_, err = stmt.Exec(true, productID)
+	if err != nil {
+		return fmt.Errorf("%w:%w", ErrExecStmt, err)
+	}
+
+	query2 := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", productsPlatformIDsTable, productsPlatformIDsUcoz, productsIDkey)
+
+	stmt, err = tx.Prepare(query2)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
+	}
+	_, err = stmt.Exec(ucozProductID, productID)
+	if err != nil {
+		return fmt.Errorf("%w:%w", ErrExecStmt, err)
+	}
+
+	stmt.Close()
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("%w: %w", storage.ErrCommitTx, err)
+	}
+
+	defer tx.Rollback()
+
+	return nil
+}
+
 func (s *Storage) Delete(ctx context.Context, productID int) error {
 	return nil
 }
 
 func (s *Storage) GetProdIDs(options *filters.Options) ([]int, error) {
 	return nil, nil
+}
+
+func (s *Storage) countProducts(searchQuery string) (int, error) {
+
+	var count int
+
+	searchQuery = strings.ToLower(searchQuery)
+
+	query := fmt.Sprintf(`
+        SELECT COUNT(*) 
+        FROM %s 
+        WHERE %s MATCH ?
+        AND (%s = TRUE OR %s = TRUE OR %s = TRUE)`,
+		productsFtsTable,
+		productsTitleColumm,
+		productsUcozLoadedColumn,
+		productsVKLoadedColumn,
+		productsAvitoLoadedColumn,
+	)
+
+	err := s.db.QueryRow(query, searchQuery).Scan(&count)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("no products found found")
+
+		}
+
+		return 0, fmt.Errorf("failed to make query:%w", err)
+	}
+
+	return count, nil
+
+}
+
+func (s *Storage) Search(ctx context.Context, searchQuery string, offset int, limit int) (products []*models.Product, count int, err error) {
+
+	tx, err := s.db.BeginTx(context.TODO(), &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: true})
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w:%w", storage.ErrBeginTx, err)
+	}
+
+	defer tx.Rollback()
+
+	searchQuery = strings.ToLower(searchQuery)
+
+	querySearchIDs := fmt.Sprintf(
+		` 
+		SELECT rowid 
+        FROM %s
+        WHERE %s MATCH ?
+        AND (%s = TRUE OR %s = TRUE OR %s = TRUE)
+		LIMIT %d OFFSET %d
+`,
+		productsFtsTable,
+		productsTitleColumm,
+		productsAvitoLoadedColumn, productsVKLoadedColumn, productsUcozLoadedColumn,
+		limit, offset,
+	)
+
+	count, err = s.countProducts(searchQuery)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to check count: %w", err)
+	}
+
+	if count < 1 {
+		return nil, 0, sql.ErrNoRows
+	}
+
+	IDsRows, err := tx.Query(querySearchIDs, searchQuery)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrExecStmt, err)
+	}
+
+	defer IDsRows.Close()
+
+	if err := IDsRows.Err(); err != nil {
+		log.Printf("ROWS ITERATION ERROR: %v", err)
+	}
+
+	var list []*models.Product
+
+	var id int
+
+	// TODO  ВОТ ТУТ ПОЧЕМУ ТО НЕ СКАНИУРЕТСЯ НИХУЯ БЛЯТЬ И НЕ ПЕРЕХОДИТ, ХОТЯ Я СДЕЛАЛ ТАКОЙ ЖЕ ЗАПРОС В КВЕРИ ТУЛЕ И ТАМ ВСЕ НОРМ почини блтяь
+	for IDsRows.Next() {
+
+		err = IDsRows.Scan(&id)
+		if err != nil {
+			s.log.Error("failed to get product by id", "error", err)
+			continue
+		}
+
+		query := fmt.Sprintf(`
+		SELECT %s, %s, %s, %s, %s 
+		FROM %s
+		WHERE %s = ?`,
+			productsTitleColumm, productsDescripColumn, productsVKLoadedColumn, productsAvitoLoadedColumn, productsUcozLoadedColumn,
+			productsTable,
+			productsIdColumn)
+
+		var p models.Product
+
+		p.Id = int64(id)
+
+		err = tx.QueryRow(query, id).Scan(
+			&p.Title,
+			&p.Description,
+
+			&p.VK.ToLoad,
+			&p.Avito.ToLoad,
+			&p.Ucoz.ToLoad,
+		)
+
+		query = fmt.Sprintf(`
+		SELECT %s, %s
+		FROM %s
+		WHERE product_id = ? `,
+			productImagesTelegramFileID,
+			productImagesTelegramUrl,
+			productImagesTable,
+		)
+
+		err = tx.QueryRow(query, id).Scan(
+			&p.TelegramFileID,
+			&p.MainPictureURL,
+		)
+
+		if err != nil {
+			s.log.Error("can't scan row", "err", err.Error())
+			return nil, 0, fmt.Errorf("can't scan row: %w", err)
+		}
+
+		list = append(list, &p)
+
+	}
+
+	if IDsRows.Err() != nil {
+		return nil, 0, err
+	}
+
+	tx.Commit()
+
+	return list, count, nil
+
 }
 
 func (s *Storage) Close() error {

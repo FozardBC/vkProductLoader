@@ -14,32 +14,6 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Avito struct {
-	ToLoad bool `json:"toLoad"`
-}
-
-type DanisaBot struct {
-	ToLoad bool `json:"toLoad"`
-}
-type VK struct {
-	ToLoad     bool `json:"toLoad"`
-	CategoryID int  `json:"categoryID"`
-}
-
-type Request struct {
-	Title          string    `json:"title" validate:"required"`
-	Description    string    `json:"description" validate:"required"`
-	Size           string    `json:"size" validate:"required"`
-	Status         string    `json:"status" validate:"required"`
-	Price          int       `json:"price" validate:"required"`
-	TelegramFileID string    `json:"tg_fileID" validate:"required"`
-	MainPictureURL string    `json:"mainPictureURL" validate:"required"`
-	PicturesURL    []string  `json:"picturesURL" validate:"required"`
-	VK             VK        `json:"vk"`
-	Avito          Avito     `json:"avito"`
-	DanisaBot      DanisaBot `json:"danisa_bot"`
-}
-
 type Exchanger interface {
 	WriteAdd(ctx context.Context, product *models.Product) error
 }

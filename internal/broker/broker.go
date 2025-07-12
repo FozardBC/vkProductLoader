@@ -52,11 +52,11 @@ func (e *Exchanger) WriteAdd(ctx context.Context, product *models.Product) error
 		}
 	}()
 
-	go func() {
-		if product.Ucoz.ToLoad {
+	// go func() {
+	// 	if product.Avito.ToLoad {
 
-		}
-	}()
+	// 	}
+	// }()
 
 	return nil
 }
