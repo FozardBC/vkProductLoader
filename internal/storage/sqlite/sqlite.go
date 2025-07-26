@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"prodLoaderREST/internal/domain/filters"
 	"prodLoaderREST/internal/domain/models"
 	"prodLoaderREST/internal/storage"
 	"strings"
@@ -89,17 +88,6 @@ func New(log *slog.Logger, storagePath string) (*Storage, error) {
     );`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create product_platforms_ids table: %w", err)
-	}
-
-	_, err = db.Exec(`
-    CREATE TABLE IF NOT EXISTS product_images (
-        product_id INTEGER PRIMARY KEY,
-        telegram_file_id TEXT NOT NULL,
-        telegram_url TEXT NOT NULL,
-        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-    );`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create product_images table: %w", err)
 	}
 
 	_, err = db.Exec(`
@@ -206,20 +194,6 @@ func (s *Storage) Save(ctx context.Context, product *models.Product) (int64, err
 	stmt2.Close()
 
 	//3
-	query3 := fmt.Sprintf("INSERT INTO %s(%s,%s,%s) VALUES (?,?,?)", productImagesTable, productsIDkey, productImagesTelegramFileID, productImagesTelegramUrl)
-
-	stmt3, err := tx.Prepare(query3)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrPrepareStmt, err)
-	}
-
-	_, err = stmt3.Exec(id, product.TelegramFileID, product.MainPictureURL)
-	if err != nil {
-
-		return 0, fmt.Errorf("%w: %w", ErrExecStmt, err)
-	}
-
-	stmt3.Close()
 
 	err = tx.Commit()
 	if err != nil {
@@ -252,6 +226,46 @@ func (s *Storage) VkLoaded(productID int64, vkProductID int) error {
 		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
 	}
 	_, err = stmt.Exec(vkProductID, productID)
+	if err != nil {
+		return fmt.Errorf("%w:%w", ErrExecStmt, err)
+	}
+
+	stmt.Close()
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("%w: %w", storage.ErrCommitTx, err)
+	}
+
+	defer tx.Rollback()
+
+	return nil
+}
+
+func (s *Storage) VkDeleted(productID int64) error {
+	tx, err := s.db.BeginTx(context.TODO(), nil)
+	if err != nil {
+		return fmt.Errorf("%w:%w", storage.ErrBeginTx, err)
+	}
+
+	query1 := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", productsTable, productsVKLoadedColumn, productsIdColumn)
+	stmt, err := tx.Prepare(query1)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
+	}
+
+	_, err = stmt.Exec(false, productID)
+	if err != nil {
+		return fmt.Errorf("%w:%w", ErrExecStmt, err)
+	}
+
+	query2 := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", productsPlatformIDsTable, productsPlatformIDsVK, productsIDkey)
+
+	stmt, err = tx.Prepare(query2)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrPrepareStmt, err)
+	}
+	_, err = stmt.Exec(0, productID)
 	if err != nil {
 		return fmt.Errorf("%w:%w", ErrExecStmt, err)
 	}
@@ -312,10 +326,6 @@ func (s *Storage) Delete(ctx context.Context, productID int) error {
 	return nil
 }
 
-func (s *Storage) GetProdIDs(options *filters.Options) ([]int, error) {
-	return nil, nil
-}
-
 func (s *Storage) countProducts(searchQuery string) (int, error) {
 
 	var count int
@@ -345,6 +355,33 @@ func (s *Storage) countProducts(searchQuery string) (int, error) {
 	}
 
 	return count, nil
+
+}
+
+func (s *Storage) VkProductID(productID int64) (int, error) {
+
+	if productID < 1 {
+		return 0, fmt.Errorf("productID can't be less 3")
+	}
+
+	query := fmt.Sprintf(`
+	SELECT %s
+	FROM %s
+	WHERE %s = ?`,
+		productsPlatformIDsVK,
+		productsPlatformIDsTable,
+		productsIDkey,
+	)
+
+	var VkProductID int
+
+	err := s.db.QueryRow(query, productID).Scan(&VkProductID)
+	if err != nil {
+
+		return 0, err
+	}
+
+	return VkProductID, nil
 
 }
 
@@ -426,25 +463,6 @@ func (s *Storage) Search(ctx context.Context, searchQuery string, offset int, li
 			&p.Avito.ToLoad,
 			&p.Ucoz.ToLoad,
 		)
-
-		query = fmt.Sprintf(`
-		SELECT %s, %s
-		FROM %s
-		WHERE product_id = ? `,
-			productImagesTelegramFileID,
-			productImagesTelegramUrl,
-			productImagesTable,
-		)
-
-		err = tx.QueryRow(query, id).Scan(
-			&p.TelegramFileID,
-			&p.MainPictureURL,
-		)
-
-		if err != nil {
-			s.log.Error("can't scan row", "err", err.Error())
-			return nil, 0, fmt.Errorf("can't scan row: %w", err)
-		}
 
 		list = append(list, &p)
 

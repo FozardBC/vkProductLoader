@@ -1,13 +1,13 @@
 package models
 
 type Product struct {
-	Id             int64
-	Title          string   `json:"title" validate:"required"`
-	Description    string   `json:"description" validate:"required"`
-	Size           string   `json:"size" validate:"required"`
-	Status         string   `json:"status" validate:"required"`
-	Price          int      `json:"price" validate:"required"`
-	TelegramFileID string   `json:"telegram_fileID" validate:"required"`
+	Id          int64
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description" validate:"required"`
+	Size        string `json:"size" validate:"required"`
+	Status      string `json:"status" validate:"required"`
+	Price       int    `json:"price" validate:"required"`
+
 	MainPictureURL string   `json:"mainPictureURL" validate:"required"`
 	PicturesURL    []string `json:"picturesURL" validate:"required"`
 	VK             VK       `json:"vk"`
@@ -20,10 +20,11 @@ type Avito struct {
 }
 
 type Ucoz struct {
-	ToLoad bool `json:"toLoad"`
+	ToLoad     bool `json:"toLoad"`
+	CategoryID int  `json:"categoryID"`
 }
 
 type VK struct {
 	ToLoad     bool `json:"toLoad"`
-	CategoryID int  `json:"categoryID" validate:"required"`
+	CategoryID int  `json:"categoryID"`
 }

@@ -20,6 +20,7 @@ type Exchanger interface {
 
 func New(log *slog.Logger, exchanger Exchanger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+
 		logHandler := log.With("requestID", requestid.Get(c))
 
 		ctx := c.Request.Context()

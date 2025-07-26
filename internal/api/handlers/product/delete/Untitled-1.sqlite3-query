@@ -1,0 +1,50 @@
+-- database: /home/fzrdub/go/ProdLoaderREST/storage/db.sqlite3
+
+SELECT * FROM products_fts
+ORDER BY `products_fts` DESC;
+
+INSERT INTO products (title, price, description, ucoz_loaded, vk_loaded, avito_loaded) VALUES
+('Смартфон Xiaomi Redmi Note 10', 19990, '6.43" AMOLED, 128 ГБ, Snapdragon 678', TRUE, TRUE, FALSE),
+('Ноутбук HP Pavilion 15', 54990, '15.6", Ryzen 5, 8 ГБ ОЗУ, 512 ГБ SSD', FALSE, TRUE, TRUE),
+('Наушники Sony WH-1000XM4', 24990, 'Беспроводные, шумоподавление, 30 ч работы', TRUE, FALSE, TRUE),
+('Фитнес-браслет Xiaomi Mi Band 6', 3490, '1.56" AMOLED, мониторинг SpO₂, 14 дней работы', FALSE, FALSE, TRUE),
+('Кофемашина DeLonghi Magnifica S', 42990, 'Автоматическая, капучинатор, 1.8 л', TRUE, TRUE, FALSE),
+('Монитор Samsung Odyssey G5', 32990, '27", 144 Гц, QHD, изогнутый', FALSE, TRUE, TRUE),
+('Игровая мышь Razer DeathAdder V2', 5990, '20000 DPI, 8 программируемых кнопок', TRUE, FALSE, FALSE),
+('Электросамокат Ninebot Max G30', 49990, '30 км/ч, запас хода 55 км, вес 19 кг', FALSE, TRUE, TRUE),
+('Умная колонка Яндекс Станция Мини', 5990, 'Алиса, голосовое управление, Bluetooth', TRUE, FALSE, FALSE),
+('Робот-пылесос Xiaomi Robot Vacuum-Mop 2', 22990, 'Лазерная навигация, влажная уборка, 2500 Па', FALSE, TRUE, TRUE);
+
+ CREATE VIRTUAL TABLE IF NOT EXISTS products_fts USING fts5(
+            title, description,
+            content='products',
+            content_rowid='id'
+        );
+        INSERT INTO products_fts SELECT  title, description FROM products;
+
+
+SELECT COUNT(*) FROM products_fts
+WHERE title MATCH 'фитнес';
+
+SELECT * FROM products WHERE title LIKE '%ноутбук%';
+
+SELECT * FROM products_fts WHERE title MATCH 'штаны';
+
+SELECT description FROM products WHERE id = (SELECT rowid FROM products_fts WHERE title MATCH LOWER('Штаны'));
+
+INSERT INTO products(title, description, price) VALUES (LOWER('АЛАВОЛП'), 'авыыафв', '123123') RETURNING id;
+
+SELECT COUNT(*) 
+        FROM products_fts
+        WHERE title MATCH 'футболка'
+        AND (ucoz_loaded= TRUE OR vk_loaded = TRUE OR avito_loaded = TRUE);
+
+SELECT rowid
+FROM products_fts
+WHERE title MATCH 'футболка'
+AND (ucoz_loaded= TRUE OR vk_loaded = TRUE OR avito_loaded = TRUE)
+LIMIT 10 OFFSET 0;
+
+
+
+UPDATE products SET vk_loaded = TRUE WHERE id = 4 

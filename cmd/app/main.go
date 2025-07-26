@@ -10,6 +10,7 @@ import (
 	"prodLoaderREST/internal/config"
 	"prodLoaderREST/internal/logger"
 	"prodLoaderREST/internal/services/consumer/vk"
+	"prodLoaderREST/internal/services/productManager"
 	"prodLoaderREST/internal/storage/sqlite"
 	"syscall"
 	"time"
@@ -35,18 +36,16 @@ func main() {
 		return
 	}
 
-	VK := vkApi.NewVK(cfg.VkToken)
-
-	vkClient := vk.New(log, VK, storage, cfg.VkGroupID)
-
 	Exchanger := broker.New(log, storage)
 
-	log.Info("Autharizated vk:", "Name:", vkClient.GetClientName())
+	productManager := productManager.New(log, vk.New(log, vkApi.NewVK(cfg.VkToken), cfg.VkGroupID, storage), Exchanger, storage)
 
-	API := api.New(log, vkClient, Exchanger, storage)
+	productManager.Listen()
+
+	log.Info("Autharizated vk:", "Name:", productManager.VK.GetClientName())
+
+	API := api.New(log, productManager, Exchanger, storage)
 	API.Setup()
-
-	go vkClient.Load(broker.VKaddProductChannel)
 
 	srv := http.Server{
 		Addr:    cfg.ServerHost + ":" + cfg.ServerPort,

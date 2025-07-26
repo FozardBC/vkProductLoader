@@ -6,8 +6,9 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"prodLoaderREST/internal/domain/filters"
+	"prodLoaderREST/internal/broker"
 	"prodLoaderREST/internal/domain/models"
+	"strings"
 
 	"github.com/SevereCloud/vksdk/api/params"
 	"github.com/SevereCloud/vksdk/v3/api"
@@ -19,29 +20,30 @@ var (
 
 type StatusChanger interface {
 	VkLoaded(productID int64, vkProductID int) error
+	VkDeleted(productID int64) error
 }
 
-type VkConsumer struct {
+type Consumer struct {
 	log           *slog.Logger
-	VK            *api.VK
-	StatusChanger StatusChanger
+	vk            *api.VK
+	statusChanger StatusChanger
 	groupID       int
 }
 
-func New(log *slog.Logger, vk *api.VK, statusChanger StatusChanger, groupID int) *VkConsumer {
-	return &VkConsumer{
+func New(log *slog.Logger, vk *api.VK, groupID int, StatusChanger StatusChanger) *Consumer {
+	return &Consumer{
 		log:           log,
-		VK:            vk,
-		StatusChanger: statusChanger,
+		vk:            vk,
+		statusChanger: StatusChanger,
 		groupID:       groupID,
 	}
 }
 
-func (v *VkConsumer) GetClientName() string {
+func (v *Consumer) GetClientName() string {
 
 	p := params.NewAccountGetInfoBuilder()
 
-	info, err := v.VK.AccountGetProfileInfo(api.Params(p.Params))
+	info, err := v.vk.AccountGetProfileInfo(api.Params(p.Params))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +51,7 @@ func (v *VkConsumer) GetClientName() string {
 	return info.FirstName + " " + info.LastName
 }
 
-func (v *VkConsumer) Load(products chan *models.Product) {
+func (v *Consumer) ListenLoad(products chan *models.Product) {
 	for p := range products {
 
 		go func() {
@@ -77,6 +79,8 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 				return
 			}
 
+			parts := strings.Split(p.Description, "\n") //надо для корректного отображения названия товарв
+
 			pars := params.NewMarketAddBuilder()
 
 			pars.OwnerID(-v.groupID)
@@ -87,13 +91,17 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 			pars.Price(float64(p.Price))
 			pars.CategoryID(p.VK.CategoryID)
 
-			response, err := v.VK.MarketAdd(api.Params(pars.Params))
+			if len(parts) > 1 {
+				pars.Name(parts[0])
+			}
+
+			response, err := v.vk.MarketAdd(api.Params(pars.Params))
 			if err != nil {
 				log.Error("Failed to add product to market", "err", err.Error(), "respone", response)
 				return
 			}
 
-			err = v.StatusChanger.VkLoaded(p.Id, response.MarketItemID)
+			err = v.statusChanger.VkLoaded(p.Id, response.MarketItemID)
 			if err != nil {
 				log.Error("failed to change status", "error", err)
 			}
@@ -103,80 +111,37 @@ func (v *VkConsumer) Load(products chan *models.Product) {
 	}
 }
 
-func (v *VkConsumer) Delete(options *filters.Options) (int, error) {
+func (v *Consumer) ListenDelete(products chan *broker.VkToDelete) {
 
-	//	pars := params.NewMarketDeleteBuilder()
-	//
-	// pars.OwnerID(-v.groupID)
-	//
-	// ProductIDs, err := v.storage.GetProdIDs(options)
-	// if err != nil {
-	// if errors.Is(err, storage.ErrProductIDnotFound) {
-	// v.log.Warn("no product founds for given filters", "options", options)
-	//
-	// return 0, err
-	// }
-	// v.log.Error("Failed to get product IDs from storage", "err", err.Error())
-	// return 0, fmt.Errorf("failed to get product IDs from storage: %w", err)
-	// }
-	//
-	// wg := sync.WaitGroup{}
-	//
-	// for i, productID := range ProductIDs {
-	// wg.Add(1)
-	// go func(wg *sync.WaitGroup) {
-	//
-	// if productID == 0 {
-	// v.log.Debug("No products found for deletion", "count", len(ProductIDs))
-	// wg.Done()
-	// return
-	// }
-	//
-	// v.log.Debug("Deleting product", "productID", productID)
-	//
-	// pars.ItemID(productID)
-	//
-	// _, err := v.VK.MarketDelete(api.Params(pars.Params))
-	// if err != nil {
-	// v.log.Error("Failed to delete product from market", "productID", productID, "err", err.Error())
-	//
-	// return
-	// }
-	//
-	// ProductIDs[i] = 0 // Удаляем ID из слайса, чтобы не удалять его повторно
-	//
-	// wg.Done()
-	//
-	// v.log.Debug("Product deleted successfully", "productID", productID)
-	// }(&wg)
-	// }
+	for id := range products {
+		v.log.Debug("Recived product to delete", "productID", id.ProductID)
 
-	// wg.Wait()
+		pars := params.NewMarketDeleteBuilder()
 
-	// var NotDeletedCount int
+		pars.OwnerID(-v.groupID)
 
-	// errNotDeleted := "Not deleted products: "
+		pars.ItemID(id.VkProductID)
 
-	// for _, productID := range ProductIDs {
-	// 	if productID != 0 {
-	// 		NotDeletedCount++
+		_, err := v.vk.MarketDelete(api.Params(pars.Params))
+		if err != nil {
+			v.log.Error("Failed to delete product from market", "productID", id, "err", err.Error())
 
-	// 		errNotDeleted += fmt.Sprintf("%d; ", productID)
-	// 	}
-	// }
+			return
+		}
 
-	// if NotDeletedCount > 0 {
-	// 	v.log.Error("Some products were not deleted", "count", NotDeletedCount, "details", errNotDeleted)
-	// 	return len(ProductIDs) - NotDeletedCount, fmt.Errorf("%w: %s", ErrNotAllProductsDeleted, errNotDeleted)
-	// }
+		v.log.Debug("product deleted from VK", "productID", id.ProductID)
 
-	// v.log.Info("All products deleted successfully", "count", len(ProductIDs))
+		err = v.statusChanger.VkDeleted(int64(id.ProductID))
+		if err != nil {
+			v.log.Error("Failed to delete product from storage", "productID", id.ProductID, "err", err)
 
-	return 0, nil
+		}
+
+	}
 
 }
 
-func (v *VkConsumer) loadPictures(log *slog.Logger, picURLs []string) ([]int, error) {
+func (v *Consumer) loadPictures(log *slog.Logger, picURLs []string) ([]int, error) {
 
 	PicturesIDs := make([]int, 0)
 
@@ -200,7 +165,7 @@ func (v *VkConsumer) loadPictures(log *slog.Logger, picURLs []string) ([]int, er
 			return nil, fmt.Errorf("unexepeted status: %s", resp.Status)
 		}
 
-		respPhoto, err := v.VK.UploadMarketPhoto(v.groupID, false, resp.Body)
+		respPhoto, err := v.vk.UploadMarketPhoto(v.groupID, false, resp.Body)
 		if err != nil {
 			v.log.Warn("failed to upload picture", "err", err.Error())
 		}
@@ -213,7 +178,7 @@ func (v *VkConsumer) loadPictures(log *slog.Logger, picURLs []string) ([]int, er
 	return PicturesIDs, nil
 }
 
-func (v *VkConsumer) loadMainPicture(picURL string) (api.PhotosSaveMarketPhotoResponse, error) {
+func (v *Consumer) loadMainPicture(picURL string) (api.PhotosSaveMarketPhotoResponse, error) {
 
 	if picURL == "" {
 		return nil, fmt.Errorf("main picture URL is empty")
@@ -230,7 +195,7 @@ func (v *VkConsumer) loadMainPicture(picURL string) (api.PhotosSaveMarketPhotoRe
 		return nil, fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 
-	vkMainPicResp, err := v.VK.UploadMarketPhoto(v.groupID, true, resp.Body)
+	vkMainPicResp, err := v.vk.UploadMarketPhoto(v.groupID, true, resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("can't load MainPhoto to VK: %s", err.Error())
 	}

@@ -3,14 +3,16 @@ package storage
 import (
 	"context"
 	"errors"
-	"prodLoaderREST/internal/domain/filters"
 	"prodLoaderREST/internal/domain/models"
 )
 
 type Storage interface {
 	Save(ctx context.Context, product *models.Product) (int64, error)
-	GetProdIDs(options *filters.Options) ([]int, error)
+	VkProductID(productID int64) (int, error)
 	Search(ctx context.Context, searchQuery string, offset int, limit int) (products []*models.Product, count int, err error)
+	UcozLoaded(productID int64, ucozProductID int) error
+	VkLoaded(productID int64, vkProductID int) error
+	VkDeleted(productID int64) error
 	Close() error
 	Ping() error
 }

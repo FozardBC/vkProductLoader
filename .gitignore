@@ -1,6 +1,6 @@
-./logs
+/logs
 .env
-./cmd/app/logs
-./storage
-./cmd/app
-./build
+/cmd/app/logs
+/storage
+/cmd/app
+/build

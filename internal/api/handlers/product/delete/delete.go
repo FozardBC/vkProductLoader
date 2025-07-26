@@ -1,79 +1,47 @@
 package delete
 
 import (
-	"errors"
-	"fmt"
 	"log/slog"
+	"net/http"
 	"prodLoaderREST/internal/api/types"
-	"prodLoaderREST/internal/domain/filters"
 	"prodLoaderREST/internal/lib/api/response"
-	"prodLoaderREST/internal/services/consumer/vk"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
-type ProductDeleter interface {
-	Delete(options *filters.Options) (int, error)
+type ProductDeleteWriter interface {
+	WriteDelete(productID int) error
 }
 
-func New(log *slog.Logger, deleter ProductDeleter) gin.HandlerFunc {
+func New(log *slog.Logger, Deleter ProductDeleteWriter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logHandler := log.With("requestID", c.GetString("requestID"))
 
-		options, err := setFilterQueries(logHandler, c)
-		if err != nil {
-			logHandler.Error("Failed to set filter queries", "error", err.Error())
-			c.JSON(400, response.Error(fmt.Sprintf("Failed to set filter queries: %s", err.Error())))
-			return
-		}
+		var prodIDint int
 
-		count, err := deleter.Delete(options)
-		if err != nil {
-			if errors.Is(err, vk.ErrNotAllProductsDeleted) {
-				logHandler.Error("Not all products were deleted", "error", err.Error(), "count", count)
-				c.JSON(500, response.Error(fmt.Sprintf("Not all products were deleted: %s", err.Error())))
+		var err error
+
+		productID := c.Query("product_id")
+		if productID != "" {
+			prodIDint, err = strconv.Atoi(productID)
+			if err != nil {
+				log.Error(types.ErrConvertParam.Error(), "param", "product_ID", "query", productID)
+				c.JSON(http.StatusBadRequest, response.Error("productID is not integer"))
+
 				return
 			}
-			logHandler.Error("Failed to delete products", "error", err.Error())
-			c.JSON(500, response.Error(fmt.Sprintf("Failed to delete products: %s", err.Error())))
-			return
+
 		}
 
-		logHandler.Info("Product deleted successfully", "count", count)
-		c.JSON(200, response.OKWithPayload(map[string]int{
-			"deleted_count": count,
-		}))
-	}
-}
-
-func setFilterQueries(log *slog.Logger, c *gin.Context) (*filters.Options, error) {
-
-	var op filters.Options
-
-	productID := c.Query("product_id")
-	if productID != "" {
-		prodIDint, err := strconv.Atoi(productID)
+		err = Deleter.WriteDelete(prodIDint)
 		if err != nil {
-			log.Error(types.ErrConvertParam.Error(), "param", "product_ID", "query", productID)
-			return nil, fmt.Errorf("%w:%s", types.ErrConvertParam, productID)
+			log.Error("failed to write to delete", "err", err.Error())
+
+			c.JSON(http.StatusBadRequest, response.Error(err.Error()))
 		}
 
-		op.ProductID = &prodIDint
-
+		logHandler.Info("Product deleted successfully")
+		c.JSON(200, response.OK())
 	}
-
-	categoryID := c.Query("category_id")
-	if categoryID != "" {
-		categoryIDint, err := strconv.Atoi(categoryID)
-		if err != nil {
-			log.Error(types.ErrConvertParam.Error(), "param", "product_ID", "query", categoryID)
-			return nil, fmt.Errorf("%w:%s", types.ErrConvertParam, categoryID)
-		}
-
-		op.CategoryID = &categoryIDint
-
-	}
-
-	return &op, nil
 }
